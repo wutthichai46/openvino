@@ -4,8 +4,9 @@
 
 #include "multinomial.hpp"
 
-#include "ie_ngraph_utils.hpp"
 #include "openvino/op/multinomial.hpp"
+#include <openvino/op/constant.hpp>
+#include <openvino/core/type.hpp>
 #include "utils/bfloat16.hpp"
 
 namespace ov {

@@ -6,11 +6,19 @@
 
 #include <ie_common.h>
 #include <node.h>
+
+#include <chrono>
 #include <memory>
+#include <numeric>
 #include <oneapi/dnnl/dnnl.hpp>
 #include <string>
 #include <vector>
-#include "common/dnnl_executor.h"
+
+#include "cpu_memory.h"
+#include "nodes/executors/executor_factory.hpp"
+#include "nodes/executors/memory_arguments.hpp"
+#include "nodes/executors/fullyconnected_config.hpp"
+#include "post_ops.hpp"
 
 namespace ov {
 namespace intel_cpu {
@@ -20,8 +28,20 @@ class FullyConnected : public Node {
 public:
     FullyConnected(const std::shared_ptr<ov::Node>& op, const GraphContext::CPtr context);
 
-    std::vector<dnnl::memory::format_tag> getAvailableFormatsForDims(const Shape &dims) const override;
-    void getSupportedDescriptors() override;
+    ~FullyConnected() {
+        if (!collectCounters)
+            return;
+
+        std::cout << "Result," << getName();
+        for (const auto& s : spend) {
+            const int total = std::accumulate(s.begin(), s.end(), 0);
+            const int average = total / s.size();
+            std::cout << "," << executor->implType() << "," << average << "," << total;
+        }
+        std::cout << '\n';
+    }
+
+    void getSupportedDescriptors() override{};
     void execute(dnnl::stream strm) override;
     bool created() const override;
 
@@ -34,18 +54,13 @@ public:
     }
 
     const std::vector<impl_desc_type>& getDefaultImplPriority() override;
-    void createDescriptor(const std::vector<MemoryDescPtr>& inputDesc,
-                          const std::vector<MemoryDescPtr>& outputDesc) override;
 
     size_t descInputNumbers() override {
         return static_cast<size_t>(getOriginalInputsNumber());
     }
 
     void initSupportedPrimitiveDescriptors() override;
-    void initOptimalPrimitiveDescriptor() override;
     void createPrimitive() override;
-    std::shared_ptr<MemoryDesc> getSrcMemDesc(const dnnl::primitive_desc &prim_desc, size_t idx) const override;
-    std::shared_ptr<MemoryDesc> getDstMemDesc(const dnnl::primitive_desc &prim_desc, size_t idx) const override;
 
     ov::element::Type getRuntimePrecision() const override;
 
@@ -56,76 +71,42 @@ public:
     void prepareParams() override;
     void executeDynamicImpl(dnnl::stream strm) override;
     bool canBeExecutedInInt8() const override;
+    // @todo ideally attributes should be filled in constructor and never changed
+    // this require to get rid of graph optimizer and to only use ngraph transformation engine
     void keepWeightsNonTransposed(bool weightsNonTransposed) {
-        this->weightsNonTransposed = weightsNonTransposed;
+        this->attrs.weightsNonTransposed = weightsNonTransposed;
     }
 
     void fuseDecompressionMultiply(const MemoryCPtr& memory);
     void fuseDecompressionSubtract(const MemoryCPtr& memory);
+    // defines which of the inputs are constant
+    constexpr static int mask() {
+        return 0 + (1 << 1);
+    }
 
 private:
-    void createDescriptorInternal(const dnnl::memory::desc &inputDesc,
-                                  const dnnl::memory::desc &outputDesc);
-
-    VectorDims makeDummyInputDims() const;
-    VectorDims makeDummyOutputDims(const VectorDims& inDims) const;
-
-    VectorDims inDims;
-    VectorDims outDims;
-
-    void setPostOps(dnnl::primitive_attr &attr, const VectorDims &dims);
-
-    bool withBiases = false;
-
     std::string errorPrefix;
     static const size_t DATA_ID = 0;
     static const size_t WEIGHTS_ID = 1;
     static const size_t BIAS_ID = 2;
-    dnnl::memory::data_type outputDataType = dnnl::memory::data_type::undef;
 
-    using executorPtr = std::shared_ptr<DnnlExecutor>;
-    executorPtr execPtr = nullptr;
-    bool useConv1x1 = false;
-    impl_desc_type implementationTypeIP = impl_desc_type::unknown;
-    MemoryDescPtr weightDescIP;
-    dnnl::primitive_attr attr;
+    ExecutorPtr executor = nullptr;
 
-    static dnnl::convolution_forward::primitive_desc
-    createDescriptorInternalForConv(DnnlMemoryDescCPtr inputDescPtr,
-                                    DnnlMemoryDescCPtr weightDescPtr,
-                                    DnnlMemoryDescCPtr biasDescPtr,
-                                    DnnlMemoryDescCPtr outputDescPtr,
-                                    const dnnl::primitive_attr& attr,
-                                    const dnnl::engine& engine);
-
-    bool canBeExecutedInConv1x1() const;
+    ExecutorPtr createExecutor();
     void fuseDecompressionConstant(const MemoryCPtr& memory, MemoryCPtr& decompressionValuesPtr);
 
-    // sparse weights
-    bool useSparseWeights = false;
-    float minSparseRate = 1.f;
-    float weiSparseRate = 0.f;
-    bool useSparseWeightsDecompression();
-    VectorDims expectedBiasDims {};
-    bool useMlas = false;
-#ifdef OV_CPU_WITH_MLAS
-    int64_t M, N, K;
-    MemoryPtr mlasPackedPtr = nullptr;
-    void executeMLAS();
-    void prepackMLASWeight();
-#endif
-#if defined(OV_CPU_WITH_ACL)
-    void prepareWeightsUsingDummyShape();
-#endif
-    bool useWeightsDecompressionImpl = false;
-    MemoryCPtr decompressionSubtractPtr = nullptr;
-    MemoryCPtr decompressionMultiplyPtr = nullptr;
-
-    // FC with transposed weights
-    bool weightsNonTransposed = false;
-    DnnlMemoryDescPtr makeTransposedWeightDescriptor(DnnlMemoryDescPtr desc);
+    FCAttrs attrs;
+    PostOps postOps;
+    ExecutorFactoryNewPtr<FCAttrs, node::FullyConnected> factory;
+    MemoryArgs memory;
+    MemoryDescArgs descriptors;
+    MemoryPtr emptyMemory;
+    const bool collectCounters = std::getenv("COLLECT_COUNTERS");
+    int took();
+    std::array<std::vector<int>, 5> spend;
+    std::chrono::high_resolution_clock::time_point begin;
 };
 
-}   // namespace node
-}   // namespace intel_cpu
-}   // namespace ov
+}  // namespace node
+}  // namespace intel_cpu
+}  // namespace ov

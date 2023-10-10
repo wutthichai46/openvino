@@ -4,6 +4,8 @@
 
 #include "topk.h"
 
+#include <openvino/op/topk.hpp>
+
 #include <string>
 #include <vector>
 #include <set>
@@ -16,10 +18,9 @@
 
 #include <cpu/x64/jit_generator.hpp>
 #include <cpu/x64/jit_uni_eltwise.hpp>
-#include "common/cpu_memcpy.h"
 
 #include "openvino/op/topk.hpp"
-#include "openvino/opsets/opset1.hpp"
+#include "utils/ngraph_utils.hpp"
 
 using namespace dnnl;
 using namespace InferenceEngine;

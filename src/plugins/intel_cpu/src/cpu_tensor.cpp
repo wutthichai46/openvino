@@ -3,9 +3,9 @@
 //
 
 #include "cpu_tensor.h"
-#include "ie_ngraph_utils.hpp"
 
 #include "utils/debug_capabilities.h"
+#include "utils/general_utils.h"
 
 namespace ov {
 namespace intel_cpu {

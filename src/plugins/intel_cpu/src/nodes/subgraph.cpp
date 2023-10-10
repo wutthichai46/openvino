@@ -36,6 +36,7 @@
 #include "shape_inference/custom/subgraph.hpp"
 #include <common/primitive_hashing_utils.hpp>
 #include "snippets/pass/hash.hpp"
+#include "utils/ngraph_utils.hpp"
 
 #include "snippets/lowered/linear_ir.hpp"
 

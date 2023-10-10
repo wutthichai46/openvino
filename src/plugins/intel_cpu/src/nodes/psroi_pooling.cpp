@@ -8,6 +8,7 @@
 #include <dnnl_types.h>
 #include "openvino/core/parallel.hpp"
 #include "utils/bfloat16.hpp"
+#include "utils/ngraph_utils.hpp"
 #include <selective_build.h>
 #include <openvino/opsets/opset1.hpp>
 #include "psroi_pooling.h"

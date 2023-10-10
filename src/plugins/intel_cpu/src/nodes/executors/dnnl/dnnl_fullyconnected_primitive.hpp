@@ -1,0 +1,105 @@
+// Copyright (C) 2018-2022 Intel Corporation
+// SPDX-License-Identifier: Apache-2.0
+//
+
+#pragma once
+
+#include <cstddef>
+#include <oneapi/dnnl/dnnl.hpp>
+
+#include "cpu_memory.h"
+#include "memory_desc/dnnl_memory_desc.h"
+#include "nodes/executors/dnnl/dnnl_shape_agnostic_data.hpp"
+#include "nodes/executors/dnnl/dnnl_utils.hpp"
+#include "nodes/executors/executor.hpp"
+#include "nodes/executors/fullyconnected_config.hpp"
+
+namespace ov {
+namespace intel_cpu {
+
+struct DnnlFcKey {
+    DnnlMemoryDescCPtr src;
+    DnnlMemoryDescCPtr wei;
+    DnnlMemoryDescCPtr bias;
+    DnnlMemoryDescCPtr dst;
+    dnnl::primitive_attr attr;
+    bool sparseWeights;
+    bool transposedWeights;
+
+    size_t hash() const;
+    bool operator==(const DnnlFcKey& rhs) const;
+};
+
+class DnnlFCPrimitive {
+public:
+    DnnlFCPrimitive(const DnnlFcKey& key,
+                    const dnnl::engine& engine,
+                    const std::vector<impl_desc_type>& implPriorities);
+
+    void execute(const dnnl_primitive_args& primArgs) const;
+
+    MemoryPtr prepareWeightsMemory(const DnnlMemoryDescPtr srcWeightDesc,
+                                   const DnnlMemoryDescPtr dstWeightDesc,
+                                   const MemoryCPtr weightsMem,
+                                   const ExecutorContext::CPtr context) const {
+        return prepareWeightsMemory(srcWeightDesc, dstWeightDesc, weightsMem, m_weightsNonTransposed, context);
+    }
+
+    const DnnlMemoryDescPtr srcDesc() const {
+        return m_srcDesc;
+    }
+
+    const DnnlMemoryDescPtr dstDesc() const {
+        return m_dstDesc;
+    }
+
+    const DnnlMemoryDescPtr weightsDesc() const {
+        return m_weiDesc;
+    }
+
+    const DnnlMemoryDescPtr scratchPadDesc() const {
+        return m_scratchPadDesc;
+    }
+
+    impl_desc_type implType() const {
+        return m_implType;
+    }
+
+    static MemoryPtr prepareWeightsMemory(const DnnlMemoryDescPtr srcWeightDesc,
+                                          const DnnlMemoryDescPtr dstWeightDesc,
+                                          const MemoryCPtr weightsMem,
+                                          const bool weightsNonTransposed,
+                                          const ExecutorContext::CPtr context) {
+        const auto originalWeightDesc =
+            weightsNonTransposed ? utils::makeTransposedWeightDescriptor(srcWeightDesc, dstWeightDesc) : srcWeightDesc;
+        return utils::prepareWeightsMemory(originalWeightDesc, dstWeightDesc, weightsMem, context);
+    }
+
+    static DnnlShapeAgnosticDataPtr createShapeAgnosticData(const FCConfig& key,
+                                                            const MemoryArgs& memory,
+                                                            const ExecutorContext::CPtr context,
+                                                            const bool cacheWeights);
+
+    static bool useWeightsDecompressionImpl(const ov::element::Type inputType, const ov::element::Type weightsType);
+
+    static std::shared_ptr<DnnlFCPrimitive> create(const MemoryDescArgs& descs,
+                                                   const FCAttrs& attrs,
+                                                   const ExecutorContext::CPtr context,
+                                                   const DnnlShapeAgnosticDataPtr& shapeAgnosticData);
+
+private:
+    bool m_weightsNonTransposed;
+    dnnl::stream m_stream;
+    dnnl::primitive_desc m_primDesc;
+    impl_desc_type m_implType;
+    DnnlMemoryDescPtr m_srcDesc;
+    DnnlMemoryDescPtr m_weiDesc;
+    DnnlMemoryDescPtr m_dstDesc;
+    DnnlMemoryDescPtr m_scratchPadDesc;
+    dnnl::primitive m_prim;
+};
+
+using DnnlFCExecutorPtr = std::shared_ptr<DnnlFCPrimitive>;
+
+}  // namespace intel_cpu
+}  // namespace ov

@@ -8,7 +8,6 @@
 #include "openvino/core/parallel.hpp"
 #include "mha.h"
 #include <openvino/opsets/opset1.hpp>
-#include "common/cpu_memcpy.h"
 #include <utils/general_utils.h>
 #include <cpu/x64/jit_generator.hpp>
 #include "emitters/x64/jit_dnnl_emitters.hpp"
@@ -17,6 +16,7 @@
 #include "transformations/cpu_opset/x64/op/mha.hpp"
 #include "dnnl_extension_utils.h"
 #include "utils/bfloat16.hpp"
+#include "utils/ngraph_utils.hpp"
 #include <ie_ngraph_utils.hpp>
 
 using namespace InferenceEngine;

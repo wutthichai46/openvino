@@ -12,6 +12,7 @@
 #include <memory>
 #include <vector>
 #include <utility>
+#include "dnnl_postops_composer.h"
 
 namespace ov {
 namespace intel_cpu {
@@ -104,6 +105,7 @@ public:
     const std::vector<float>& getInputShift() const { return inputShift; }
     const std::vector<float>& getOutputScale() const { return outputScale; }
     const std::vector<float>& getOutputShift() const { return outputShift; }
+    const size_t getLevels() const { return levels; }
 
     void setCropLow(std::vector<float> newCropLow) {
         cropLow = std::move(newCropLow); cropLowSize = cropLow.size(); ++parameterVersion;

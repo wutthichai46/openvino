@@ -10,7 +10,8 @@
 #include <vector>
 #include <memory>
 #include <caseless.hpp>
-#include "executors/eltwise_list.hpp"
+#include "dnnl_postops_composer.h"
+#include "nodes/executors/eltwise.hpp"
 
 namespace ov {
 namespace intel_cpu {
@@ -121,6 +122,8 @@ public:
     float getAlpha() const { return alpha; }
     float getBeta() const { return beta; }
     float getGamma() const { return gamma; }
+    const std::vector<float>& getScales() const { return scales; }
+    const std::vector<float>& getShifts() const { return shifts; }
 
     dnnl::algorithm getOneDnnAlgorithm() const { return onednnAlgorithm; }
 

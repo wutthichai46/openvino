@@ -86,7 +86,7 @@ void Graph::CreateGraph(NET &net, const GraphContext::CPtr ctx) {
 void Graph::CreateGraph(const std::vector<NodePtr>& graphNodes,
                         const std::vector<EdgePtr>& graphEdges,
                         const GraphContext::CPtr ctx,
-                        std::string name) {
+                        const std::string name) {
     if (IsReady())
         ForgetGraphData();
 
@@ -160,9 +160,7 @@ void Graph::Replicate(const std::shared_ptr<const ov::Model> &model) {
             auto parentOp = op->get_input_node_shared_ptr(port);
             auto parentNode = op2node[parentOp];
 
-            EdgePtr edge(new Edge(parentNode, node, getParentOutputPort(op, parentOp, port), static_cast<int>(port)));
-            node->addEdge(edge);
-            graphEdges.push_back(edge);
+            AddEdge(parentNode, node, getParentOutputPort(op, parentOp, port), static_cast<int>(port));
         }
 
         if (!one_of(op->get_type_info(),
@@ -185,10 +183,8 @@ void Graph::Replicate(const std::shared_ptr<const ov::Model> &model) {
         const NodePtr outNode = std::make_shared<node::Input>(parentNode->outputShapes[port],
                                                                         parentNode->getOriginalOutputPrecisionAtPort(port),
                                                                         nodeName, "Result", context);
-        EdgePtr edge(new Edge(parentNode, outNode, port, 0));
-        outNode->addEdge(edge);
-        graphEdges.push_back(edge);
         graphNodes.push_back(outNode);
+        AddEdge(parentNode, outNode, port, 0);
     }
 
     auto hasSubgraphConsumers = [](const NodePtr& node) -> bool {
@@ -229,16 +225,23 @@ void Graph::Replicate(const std::shared_ptr<const ov::Model> &model) {
     }
 }
 
-void Graph::InitGraph() {
+void Graph::InitGraph(bool optimize, bool initDescriptors) {
+    DEBUG_LOG("Initializing graph with name: ",  GetName());
+
     GraphOptimizer optimizer;
 
     SortTopologically();
     InitNodes();
 
-    optimizer.ApplyCommonGraphOptimizations(*this);
+    if (std::getenv("DISABLE_OPT"))
+        optimize = false;
+
+    if (optimize)
+        optimizer.ApplyCommonGraphOptimizations(*this);
     SortTopologically();
 
-    InitDescriptors();
+    if (initDescriptors)
+        InitDescriptors();
 
     ResolveInplaceDirections();
 
@@ -246,10 +249,11 @@ void Graph::InitGraph() {
 
     ResolveEdgeConflicts();
 
-    optimizer.ApplyImplSpecificGraphOptimizations(*this);
+    if (optimize)
+        optimizer.ApplyImplSpecificGraphOptimizations(*this);
     SortTopologically();
 
-    const bool hasDynNodes = ProcessDynNodes();
+    const auto hasDynNodes = ProcessDynNodes();
 
     Allocate();
 
@@ -265,6 +269,8 @@ void Graph::InitGraph() {
     SearchInternalStateNodes();
 
     status = hasDynNodes ? Status::ReadyDynamic : Status::ReadyStatic;
+
+    CPU_DEBUG_CAP_ENABLE(serialize(*this));
 }
 
 void Graph::InitNodes() {
@@ -1295,6 +1301,7 @@ inline void Graph::ExecuteNode(const NodePtr& node, const dnnl::stream& stream) 
 }
 
 void Graph::Infer(SyncInferRequest* request) {
+    DEBUG_LOG("Starting inference of the graph: ", GetName(), ". Status: ", static_cast<int>(status));
     if (!IsReady()) {
         OPENVINO_THROW("Wrong state of the ov::intel_cpu::Graph. Topology is not ready.");
     }
@@ -1427,13 +1434,12 @@ void Graph::GetPerfData(std::vector<ov::ProfilingInfo>& perfMap) const {
 }
 
 void Graph::RemoveEdge(const EdgePtr& edge) {
-    for (auto it = graphEdges.begin(); it != graphEdges.end(); it++) {
-        if ((*it) == edge) {
-            edge->drop();
-            graphEdges.erase(it);
-            return;
-        }
-    }
+    const auto it = std::find(graphEdges.begin(), graphEdges.end(), edge);
+    if (it == graphEdges.end())
+        return;
+
+    (*it)->drop();
+    graphEdges.erase(it);
 }
 
 void Graph::DropNode(const NodePtr &node) {
@@ -1447,7 +1453,6 @@ void Graph::DropNode(const NodePtr &node) {
         if (!parent) continue;
 
         const int inNum = p_edge->getInputNum();
-        p_edge->drop();
         RemoveEdge(p_edge);
 
         for (size_t j = 0; j < children.size(); j++) {
@@ -1457,12 +1462,8 @@ void Graph::DropNode(const NodePtr &node) {
             if (!child) continue;
 
             const int outNum = c_edge->getOutputNum();
-            c_edge->drop();
             RemoveEdge(c_edge);
-
-            EdgePtr newEdge(new Edge(parent, child, inNum, outNum));
-            graphEdges.push_back(newEdge);
-            parent->addEdge(newEdge);
+            AddEdge(parent, child, inNum, outNum);
         }
     }
 }
@@ -1485,7 +1486,6 @@ void Graph::DropDWConvNode(const NodePtr &node) {
         if (!parent) continue;
 
         const int inNum = p_edge->getInputNum();
-        p_edge->drop();
         RemoveEdge(p_edge);
 
         for (size_t j = 0; j < children.size(); j++) {
@@ -1495,12 +1495,9 @@ void Graph::DropDWConvNode(const NodePtr &node) {
             if (!child) continue;
 
             const int outNum = c_edge->getOutputNum();
-            c_edge->drop();
             RemoveEdge(c_edge);
 
-            EdgePtr newEdge(new Edge(parent, child, inNum, outNum));
-            graphEdges.push_back(newEdge);
-            parent->addEdge(newEdge);
+            AddEdge(parent, child, inNum, outNum);
         }
     }
 
@@ -1512,44 +1509,26 @@ void Graph::DropDWConvNode(const NodePtr &node) {
 
         const int inNum = p_edge->getInputNum();
         const int portCandidate = p_edge->getOutputNum();
-        p_edge->drop();
         RemoveEdge(p_edge);
         const int outNum = parentConv->parentEdges.size();
-
-        EdgePtr newEdge(new Edge(parent, parentConv, inNum, outNum));
-        graphEdges.push_back(newEdge);
-        parent->addEdge(newEdge);
         parentConv->inputShapes.push_back(node->getInputShapeAtPort(portCandidate));
+        AddEdge(parent, parentConv, inNum, outNum);
     }
     parentConv->outputShapes[0] = node->getOutputShapeAtPort(0);
 }
 
 void Graph::RemoveDroppedNodes() {
     auto& nodes = this->GetNodes();
-
-    auto it = nodes.begin();
-
-    while (it != nodes.end()) {
-        if ((*it)->isDropped()) {
-            it = nodes.erase(it);
-        } else {
-            it++;
-        }
-    }
+    nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
+                               [](const NodePtr& node){ return node->isDropped(); }),
+                nodes.end());
 }
 
 void Graph::RemoveDroppedEdges() {
     auto& edges = this->GetEdges();
-
-    auto it = edges.begin();
-
-    while (it != edges.end()) {
-        if ((*it)->isDropped()) {
-            it = edges.erase(it);
-        } else {
-            it++;
-        }
-    }
+    edges.erase(std::remove_if(edges.begin(), edges.end(),
+                               [](const EdgePtr& node){ return node->isDropped(); }),
+                edges.end());
 }
 
 NodePtr Graph::InsertReorder(EdgePtr edge, std::string layerName, const MemoryDesc& inDesc, const MemoryDesc& outDesc,
@@ -1596,16 +1575,9 @@ bool Graph::InsertNode(EdgePtr edge, NodePtr node, bool initNode) {
 }
 
 bool Graph::InsertNode(NodePtr parent, NodePtr child, NodePtr node, int parentPort, int childPort, bool initNode) {
-    EdgePtr beforeNode(new Edge(parent, node, parentPort, 0));
-    EdgePtr afterNode(new Edge(node, child, 0, childPort));
-
-    // Add edge for beforeNode
-    beforeNode->getChild()->parentEdges.push_back(beforeNode);
-    parent->childEdges.push_back(beforeNode);
-
-    // Add edge for afterNode
-    afterNode->getParent()->childEdges.push_back(afterNode);
-    child->parentEdges.push_back(afterNode);
+    AddEdge(parent, node, parentPort, 0);
+    AddEdge(node, child, 0, childPort);
+    AddNode(node);
 
     if (initNode) {
         node->getSupportedDescriptors();
@@ -1616,9 +1588,6 @@ bool Graph::InsertNode(NodePtr parent, NodePtr child, NodePtr node, int parentPo
         node->initOptimalPrimitiveDescriptor();
     }
 
-    graphEdges.push_back(beforeNode);
-    graphEdges.push_back(afterNode);
-    graphNodes.push_back(node);
     return true;
 }
 

@@ -162,7 +162,7 @@ void Convert::prepareParams() {
                                                                                        srcDesc,
                                                                                        dstDesc,
                                                                                        {});
-    selectedPD->setImplementationType(execPtr->getImplType());
+    selectedPD->setImplementationType(execPtr->implType());
 }
 
 void Convert::executeDynamicImpl(dnnl::stream strm) {
@@ -181,7 +181,7 @@ void Convert::execute(dnnl::stream strm) {
 
     MemoryCPtr srcMemory = getParentEdgeAt(0)->getMemoryPtr();
     MemoryPtr dstMemory = getChildEdgeAt(0)->getMemoryPtr();
-    execPtr->exec(srcMemory, dstMemory);
+    execPtr->exec({srcMemory}, {dstMemory});
 }
 
 bool Convert::created() const {

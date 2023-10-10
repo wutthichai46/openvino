@@ -3,53 +3,26 @@
 //
 
 #include "node.h"
+#include "cpu_types.h"
 #include "edge.h"
-#include "extension_mngr.h"
 #include "partitioned_mem_mgr.h"
-#include "itt.h"
 
-#include "caseless.hpp"
 #include <memory>
 #include <oneapi/dnnl/dnnl.hpp>
 #include <vector>
 #include <string>
-#include <limits>
 #include <cstdint>
 #include <unordered_map>
 
-#include "nodes/concat.h"
 #include "nodes/conv.h"
-#include "nodes/deconv.h"
 #include "nodes/eltwise.h"
-#include "nodes/matmul.h"
-#include "nodes/fullyconnected.h"
-#include "nodes/if.h"
 #include "nodes/input.h"
-#include "nodes/lrn.h"
-#include "nodes/pooling.h"
 #include "nodes/reorder.h"
-#include "nodes/reshape.h"
-#include "nodes/softmax.h"
-#include "nodes/tile.h"
-#include "nodes/split.h"
-#include "nodes/pad.h"
-#include "nodes/transpose.h"
-#include "nodes/memory.hpp"
-#include "nodes/mvn.h"
-#include "nodes/normalize.h"
-#include "nodes/reduce.h"
-#include "nodes/tensoriterator.h"
-#include "nodes/scatter_update.h"
-#include "nodes/interpolate.h"
-#include "nodes/depth_to_space.h"
-#include "nodes/space_to_depth.h"
-#include "nodes/strided_slice.h"
-#include "nodes/shuffle_channels.h"
 #include "nodes/reference.h"
-#include "nodes/fake_quantize.h"
 #include "dnnl_extension_utils.h"
 
-#include "nodes/common/cpu_memcpy.h"
+#include "utils/debug_capabilities.h"
+#include "utils/ngraph_utils.hpp"
 #include "utils/rt_info/memory_formats_attribute.hpp"
 #include <openvino/opsets/opset1.hpp>
 
@@ -58,7 +31,6 @@
 #include <ie_ngraph_utils.hpp>
 #include "utils/general_utils.h"
 #include "utils/cpu_utils.hpp"
-#include "utils/verbose.h"
 #include "nodes/common/cpu_convert.h"
 #include "memory_desc/cpu_memory_desc_utils.h"
 #include "memory_desc/dnnl_blocked_memory_desc.h"
@@ -143,7 +115,7 @@ Node::Node(const std::shared_ptr<ov::Node>& op,
         addOriginalLayer(name);
     }
 
-    auto primitivesPriority = getImplPriorityValue(op);
+    primitivesPriority = getImplPriorityValue(op);
     if (!primitivesPriority.empty()) {
         std::istringstream stream(primitivesPriority);
         std::string str;
@@ -1181,7 +1153,7 @@ void Node::initOptimalPrimitiveDescriptor() {
 
     auto selected_pd = getSelectedPrimitiveDescriptor();
     if (selected_pd == nullptr)
-        OPENVINO_THROW("Preferable primitive descriptor is not set.");
+        OPENVINO_THROW("Preferable primitive descriptor is not set for ", getName());
 
     auto config = selected_pd->getConfig();
     for (size_t i = 0; i < config.inConfs.size(); i++) {
@@ -1252,7 +1224,7 @@ bool Node::isFusedWith(Type fusedNodeType) const {
     return false;
 }
 
-dnnl::memory::format_tag Node::getWeightsFormatTagByDims(const SizeVector& dims) const {
+dnnl::memory::format_tag Node::getWeightsFormatTagByDims(const InferenceEngine::SizeVector& dims) const {
     switch (dims.size()) {
     case 1:
         return dnnl::memory::format_tag::a;
@@ -1327,7 +1299,7 @@ Node* Node::NodesFactory::create(const std::shared_ptr<ov::Node>& op, const Grap
     // Note that the op type and its friendly name will also be provided if we fail to create the node.
     auto getExceptionDescWithoutStatus = [](const ov::Exception& ex) {
         std::string desc = ex.what();
-        size_t pos = desc.find("]");
+        size_t pos = desc.find(']');
         if (pos != std::string::npos) {
             if (desc.size() == pos + 1) {
                 desc.erase(0, pos + 1);
@@ -1630,9 +1602,8 @@ std::vector<VectorDims> Node::shapeInferGeneric(const std::vector<Shape>& shapes
         }
 
         return std::move(result.dims);
-    }
-    catch (const std::runtime_error& exp) {
-        OPENVINO_THROW("Shape inference of ", getTypeStr() , " node with name ", getName(), " failed: ", exp.what());
+    } catch (const std::runtime_error& exp) {
+        OPENVINO_THROW("Shape inference of ", getTypeStr(), " node with name ", getName(), " failed: ", exp.what());
     }
 }
 

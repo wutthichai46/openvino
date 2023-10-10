@@ -614,10 +614,7 @@ void GraphOptimizer::FuseConvolutionMatMulDeconvAndBias(Graph &graph) {
                         outNum = remEdge->getOutputNum();
                         graph.RemoveEdge(remEdge);
                     }
-                    EdgePtr newEdge(new Edge(parent, child, inNum, outNum));
-                    auto &graphEdges = graph.GetEdges();
-                    graphEdges.push_back(newEdge);
-                    parent->addEdge(newEdge);
+                    graph.AddEdge(parent, child, inNum, outNum);
                 }
             } else {
                 EdgePtr &remEdge = p_edge;
@@ -629,7 +626,6 @@ void GraphOptimizer::FuseConvolutionMatMulDeconvAndBias(Graph &graph) {
 
                 auto& targetNode = parentNode;
                 const auto& biasNode = parent;
-                auto& graphEdges = graph.GetEdges();
                 auto biasOutputShape = biasNode->getOutputShapeAtPort(0);
                 int outNum = targetNode->getParentEdges().size();
                 // ONEDNN Conv, Deconv, FC would need the bias to be flatten into 1D tensor.
@@ -655,19 +651,15 @@ void GraphOptimizer::FuseConvolutionMatMulDeconvAndBias(Graph &graph) {
                     graph.InsertNode(biasNode, targetNode, cpuReshapeNode, inNum, outNum, false);
                     // Insert the Reshape const input node and edge into CPU graph.
                     const auto cpuReshapeConstInput = std::make_shared<node::Input>(reshapeConstInput, graph.getGraphContext());
-                    EdgePtr newReshapeConstEdge(new Edge(cpuReshapeConstInput, cpuReshapeNode, 0, 1));
-                    cpuReshapeNode->addEdge(newReshapeConstEdge);
-                    graphEdges.push_back(newReshapeConstEdge);
-                    graphNodes.push_back(cpuReshapeConstInput);
+                    graph.AddNode(cpuReshapeConstInput);
+                    graph.AddEdge(cpuReshapeConstInput, cpuReshapeNode, 0, 1);
                     DEBUG_LOG("GraphOptimizer##FusingBias:Flatten Bias node from shape ", PartialShape{biasOutputShape.getDims()},
                                         "  to  ", PartialShape{flattenShape});
                     // Update bias output shape to be flatten shape.
                     biasOutputShape = Shape{flattenShape};
                 } else {
                     // Bias is connected as input edge.
-                    EdgePtr newEdge(new Edge(biasNode, targetNode, inNum, outNum));
-                    graphEdges.push_back(newEdge);
-                    biasNode->addEdge(newEdge);
+                    graph.AddEdge(biasNode, targetNode, inNum, outNum);
                 }
                 //Add the Bias inputshape into conv/FC/Deconv/Matmul.
                 targetNode->inputShapes.push_back(biasOutputShape);
@@ -836,10 +828,7 @@ void GraphOptimizer::FuseMultiplyAndAdd(Graph &graph) {
                         remEdge->drop();
                         graph.RemoveEdge(remEdge);
                     }
-                    EdgePtr newEdge(new Edge(parent, child, inNum, outNum));
-                    auto &graphEdges = graph.GetEdges();
-                    graphEdges.push_back(newEdge);
-                    parent->addEdge(newEdge);
+                    graph.AddEdge(parent, child, inNum, outNum);
                 }
             } else {
                 EdgePtr &remEdge = p_edge;
@@ -851,12 +840,8 @@ void GraphOptimizer::FuseMultiplyAndAdd(Graph &graph) {
                 }
 
                 auto& parentEltwise = parentNode;
-                EdgePtr newEdge(new Edge(parent, parentEltwise, inNum, parentEltwise->getParentEdges().size()));
-                auto &graphEdges = graph.GetEdges();
-                graphEdges.push_back(newEdge);
-                parent->addEdge(newEdge);
-
                 parentEltwise->inputShapes.push_back(parent->getOutputShapeAtPort(0));
+                graph.AddEdge(parent, parentEltwise, inNum, parentEltwise->getParentEdges().size());
             }
         }
 
@@ -927,10 +912,7 @@ void GraphOptimizer::MergeConvertAndScaleShift(Graph& graph) {
                 remEdge->drop();
                 graph.RemoveEdge(remEdge);
             }
-            EdgePtr newEdge(new Edge(parent, child, inNum, outNum));
-            auto& graphEdges = graph.GetEdges();
-            graphEdges.push_back(newEdge);
-            parent->addEdge(newEdge);
+            graph.AddEdge(parent, child, inNum, outNum);
         }
 
         childNode->setOriginalInputPrecisionAtPort(0, parentNode->getOriginalInputPrecisionAtPort(0));
@@ -1347,7 +1329,7 @@ void GraphOptimizer::FuseConvolutionAndDWConvolution(Graph &graph) {
         auto outDims = childNode->outputShapes[0].getStaticDims();
         int elemSize = childNode->getOriginalOutputPrecisionAtPort(0).size();
 
-        int L3_cache_size = utils::get_cache_size(3, false);
+        int L3_cache_size = dnnl::utils::get_cache_size(3, false);
         int dw_conv_input_size = inDims[0] * inDims[1] * inDims[2] * inDims[3] * elemSize;
         int dw_conv_output_size = outDims[0] * outDims[1]* outDims[2] * outDims[3] * elemSize;
 
@@ -1775,10 +1757,7 @@ void GraphOptimizer::FuseConvolutionSumAndConvolutionSumActivation(Graph &graph)
         if (mergedBinConvNode != nullptr)
             childPort = mergedBinConvNode->getParentEdges().size();
 
-        EdgePtr edgePtr(new Edge(peerNode, mergedConv, peer_port, childPort));
-        graph.GetEdges().push_back(edgePtr);
-
-        mergedConv->addEdge(edgePtr);
+        graph.AddEdge(peerNode, mergedConv, peer_port, childPort);
 
         std::vector<EdgeWeakPtr> edges_to_reconnect = lastNode->getChildEdges();
         for (auto &edge_w : edges_to_reconnect) {
@@ -1792,9 +1771,7 @@ void GraphOptimizer::FuseConvolutionSumAndConvolutionSumActivation(Graph &graph)
 
             edge->drop();
 
-            EdgePtr newEdge(new Edge(mergedConv, child, idxParent, idxChild));
-            graph.GetEdges().push_back(newEdge);
-            child->addEdge(newEdge);
+            graph.AddEdge(mergedConv, child, idxParent, idxChild);
         }
 
         if (lastNode != sum) {
@@ -2082,12 +2059,8 @@ void GraphOptimizer::FuseEltwiseAndSimple(Graph &graph) {
                             outNum = remEdge->getOutputNum();
                             graph.RemoveEdge(remEdge);
                         }
-                        EdgePtr newEdge(new Edge(parent, child, inNum, outNum));
-                        auto &graphEdges = graph.GetEdges();
-                        graphEdges.push_back(newEdge);
-                        parent->addEdge(newEdge);
-
                         parent->outputShapes[inNum] = child->inputShapes[outNum];
+                        graph.AddEdge(parent, child, inNum, outNum);
                     }
                 } else {
                     EdgePtr &remEdge = p_edge;
@@ -2103,14 +2076,11 @@ void GraphOptimizer::FuseEltwiseAndSimple(Graph &graph) {
                         graph.RemoveEdge(remEdge);
                     }
 
-                    EdgePtr newEdge(new Edge(parent, parentNode, inNum, outNum));
-                    auto &graphEdges = graph.GetEdges();
-                    graphEdges.push_back(newEdge);
-                    parent->addEdge(newEdge);
-
                     if (parentNode->inputShapes.size() < static_cast<size_t>(outNum + 1))
                         parentNode->inputShapes.resize(outNum + 1);
                     parentNode->inputShapes[outNum] = parent->getOutputShapeAtPort(inNum);
+
+                    graph.AddEdge(parent, parentNode, inNum, outNum);
                 }
             }
 
@@ -2687,12 +2657,8 @@ void GraphOptimizer::reshapeRnnSeq(Graph &graph) {
             graph.InsertNode(parentNode, childNode, cpuUnsqueeze, edge->getInputNum(), edge->getOutputNum(), false);
 
             const auto cpuConstant = std::make_shared<node::Input>(secondInput, graph.getGraphContext());
-            EdgePtr newEdge(new Edge(cpuConstant, cpuUnsqueeze, 0, 1));
-            cpuUnsqueeze->addEdge(newEdge);
-            auto &graphEdges = graph.GetEdges();
-            graphEdges.push_back(newEdge);
-            graphNodes.push_back(cpuConstant);
-
+            graph.AddNode(cpuConstant);
+            graph.AddEdge(cpuConstant, cpuUnsqueeze, 0, 1);
             graph.RemoveEdge(edge);
         }
     }

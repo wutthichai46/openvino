@@ -8,9 +8,9 @@
 #include <map>
 #include <set>
 
+#include "nodes/executors/eltwise_list.hpp"
 #include "openvino/core/parallel.hpp"
 
-#include "config.h"
 #include "cpu_types.h"
 #include "utils/bfloat16.hpp"
 #include "ie_ngraph_utils.hpp"
@@ -52,6 +52,7 @@
 #include <functional>
 #include "memory_desc/dnnl_blocked_memory_desc.h"
 #include "shape_inference/custom/eltwise.hpp"
+#include "utils/ngraph_utils.hpp"
 
 using namespace InferenceEngine;
 using namespace dnnl::impl::utils;

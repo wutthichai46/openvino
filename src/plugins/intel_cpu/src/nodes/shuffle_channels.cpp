@@ -4,16 +4,14 @@
 
 #include "shuffle_channels.h"
 
-#include "openvino/core/parallel.hpp"
+#include <openvino/op/shuffle_channels.hpp>
+
 #include <dnnl_extension_utils.h>
 #include <cpu/x64/jit_generator.hpp>
-#include "common/blocked_desc_creator.h"
 
-#include "common/cpu_memcpy.h"
 #include "utils/general_utils.h"
 
 #include <string>
-#include <cmath>
 #include <common/primitive_hashing_utils.hpp>
 
 #define THROW_SHCH_ERROR(...) OPENVINO_THROW("ShuffleChannels layer with name '", getName(), "' ", __VA_ARGS__)

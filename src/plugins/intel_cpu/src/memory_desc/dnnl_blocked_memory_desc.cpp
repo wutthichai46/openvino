@@ -10,8 +10,8 @@
 #include "cpu_types.h"
 #include "dnnl_extension_utils.h"
 #include "ie_common.h"
-#include "memory_desc/dnnl_memory_desc.h"
-#include "nodes/common/dnnl_executor.h"
+#include "memory_desc/cpu_blocked_memory_desc.h"
+#include "utils/general_utils.h"
 
 #include <algorithm>
 #include <cstdint>

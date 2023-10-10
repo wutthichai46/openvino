@@ -7,7 +7,6 @@
 #include "utils/debug_capabilities.h"
 #include <ie_ngraph_utils.hpp>
 #include "exec_graph_info.hpp"
-#include "ie_common.h"
 #include <dnnl_debug.h>
 #include <openvino/pass/manager.hpp>
 #include <openvino/pass/serialize.hpp>

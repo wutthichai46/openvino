@@ -4,22 +4,21 @@
 
 #pragma once
 
-#include "cache/multi_cache.h"
 #include "config.h"
 #include "cpu_memory.h"
-#include "dnnl_scratch_pad.h"
+#include "nodes/executors/executor.hpp"
+#include "openvino/runtime/profiling_info.hpp"
+#include "node.h"
 #include "edge.h"
 #include "graph_context.h"
-#include "node.h"
-#include "openvino/runtime/make_tensor.hpp"
 #include "openvino/runtime/profiling_info.hpp"
 
-#include <atomic>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "openvino/runtime/so_ptr.hpp"
 #include "proxy_mem_mgr.h"
 
 namespace ov {
@@ -30,7 +29,7 @@ namespace node {
 class MemoryStateNode;
 } // namespace node
 
-class Graph {
+class Graph : public Executor {
 public:
     typedef std::shared_ptr<Graph> Ptr;
 
@@ -41,6 +40,7 @@ public:
     };
 
     Graph() = default;
+
     ~Graph();
 
     bool IsReady() {
@@ -57,12 +57,16 @@ public:
     void CreateGraph(const std::vector<NodePtr> &graphNodes,
                      const std::vector<EdgePtr> &graphEdges,
                      const GraphContext::CPtr ctx,
-                     std::string name);
+                     const std::string name);
 
     void PushInputData(const std::string& name, const ov::SoPtr<ITensor>& input);
     void PullOutputData(std::unordered_map<std::string, ov::SoPtr<ITensor>>& output);
 
     void Infer(SyncInferRequest* request = nullptr);
+
+    impl_desc_type implType() const override {
+        return impl_desc_type::undef;
+    }
 
     const std::vector<NodePtr>& GetNodes() const {
         return graphNodes;
@@ -119,6 +123,34 @@ public:
     void RemoveDroppedNodes();
     void RemoveDroppedEdges();
     void RemoveEdge(const EdgePtr& edge);
+    void AddEdge(const NodePtr& parent,
+                 const NodePtr& child,
+                 int parentPort = 0,
+                 int childPort = 0) {
+        auto edge = std::make_shared<Edge>(parent, child, parentPort, childPort);
+        parent->childEdges.push_back(edge);
+        child->parentEdges.push_back(edge);
+        graphEdges.push_back(edge);
+    }
+
+    void AddNode(NodePtr node) {
+        assert(std::find(graphNodes.begin(), graphNodes.end(), node) == graphNodes.end());
+        graphNodes.push_back(node);
+    }
+
+    void AddEdge(EdgePtr edge) {
+        assert(std::find(graphEdges.begin(), graphEdges.end(), edge) == graphEdges.end());
+        graphEdges.push_back(edge);
+    }
+
+    void RemoveNode(const NodePtr& node) {
+        auto pos = std::find(std::begin(graphNodes), std::end(graphNodes), node);
+
+        if (pos != std::end(graphNodes)) {
+            graphNodes.erase(pos);
+        }
+    }
+
     void DropNode(const NodePtr& node);
     void DropDWConvNode(const NodePtr& node);
 
@@ -196,6 +228,7 @@ public:
     getInternalStateNodes() const {
         return internalStateNodes;
     }
+    void InitGraph(bool optimize = true, bool initDescriptors = true);
 
 protected:
     void VisitNode(NodePtr node, std::vector<NodePtr>& sortedNodes);
@@ -227,7 +260,6 @@ protected:
     bool graphHasDynamicInput = false;
 
     void Replicate(const std::shared_ptr<const ov::Model> &subgraph);
-    void InitGraph();
     void InitNodes();
     void InitDescriptors();
     void ResolveInplaceDirections();
@@ -267,6 +299,8 @@ private:
     void EnforceBF16();
     void resolveInPlaceDirection(const NodePtr& node) const;
 };
+
+using GraphPtr = std::shared_ptr<Graph>;
 
 }  // namespace intel_cpu
 }  // namespace ov

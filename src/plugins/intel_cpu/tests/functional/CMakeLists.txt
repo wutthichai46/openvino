@@ -62,6 +62,59 @@ ov_add_test_target(
         LABELS OV CPU
 )
 
+# @todo introduce new option or rename current (ENABLE_CPU_EXTRA_TEST_TARGETS)
+if(ENABLE_CPU_SPECIFIC_TARGET_PER_TEST)
+    file(GLOB_RECURSE TEST_UTILS_LIST
+        ${CMAKE_CURRENT_SOURCE_DIR}/shared_tests_instances/set_device_name.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/shared_tests_instances/skip_tests_config.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/shared_tests_instances/core_config.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_utils/cpu_test_utils.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_utils/fusing_test_utils.cpp
+    )
+
+    if(X86_64)
+        list(APPEND TEST_UTILS_LIST
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_utils/x64/filter_cpu_info.cpp)
+    elseif(ARM OR AARCH64)
+        list(APPEND TEST_UTILS_LIST
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_utils/arm/filter_cpu_info.cpp)
+    endif()
+
+    set(TEST_UTILS "${TEST_UTILS_LIST}")
+
+    ov_add_test_target(
+        NAME ov_cpu_func_subgraph_tests
+        ROOT ${CMAKE_CURRENT_SOURCE_DIR}/subgraph_tests
+        INCLUDES ${INCLUDES}
+        EXCLUDED_SOURCE_PATHS ${EXCLUDED_SOURCE_PATHS}
+        OBJECT_FILES ${TMP_EXPLICITLY_ENABLED_TESTS} ${TEST_UTILS}
+        DEFINES ${DEFINES}
+        DEPENDENCIES ${DEPENDENCIES}
+        LINK_LIBRARIES ${LINK_LIBRARIES}
+        ADD_CPPLINT
+        LABELS CPU
+    )
+
+    set_target_properties(ov_cpu_func_subgraph_tests PROPERTIES
+        EXCLUDE_FROM_ALL ON)
+
+    ov_add_test_target(
+        NAME ov_cpu_func_slt
+        ROOT ${CMAKE_CURRENT_SOURCE_DIR}/single_layer_tests
+        INCLUDES ${INCLUDES}
+        EXCLUDED_SOURCE_PATHS ${EXCLUDED_SOURCE_PATHS}
+        OBJECT_FILES ${TMP_EXPLICITLY_ENABLED_TESTS}
+        DEFINES ${DEFINES}
+        DEPENDENCIES ${DEPENDENCIES}
+        LINK_LIBRARIES ${LINK_LIBRARIES}
+        ADD_CPPLINT
+        LABELS CPU
+    )
+
+    set_target_properties(ov_cpu_func_slt PROPERTIES
+        EXCLUDE_FROM_ALL ON)
+endif()
+
 ov_set_threading_interface_for(${TARGET_NAME})
 
 include(specific_tests.cmake)

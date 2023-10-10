@@ -3,13 +3,9 @@
 //
 
 #include "conv.h"
-#include "onednn/dnnl.h"
-#include "reorder.h"
 #include "input.h"
 #include "eltwise.h"
 #include "fake_quantize.h"
-#include "pooling.h"
-#include "concat.h"
 #include <graph.h>
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include <common/c_types_map.hpp>
@@ -27,13 +23,14 @@
 #include "common/cpu_convert.h"
 #include <memory_desc/cpu_memory_desc_utils.h>
 #include "memory_desc/dnnl_blocked_memory_desc.h"
-#include "utils/cpu_utils.hpp"
 #include "utils/debug_capabilities.h"
 #include <common/primitive_hashing_utils.hpp>
 #include <cpu/cpu_primitive.hpp>
 #include <common/primitive_desc.hpp>
 #include <common/primitive_desc_iface.hpp>
 #include "ie_ngraph_utils.hpp"
+#include "openvino/op/convolution.hpp"
+#include "openvino/op/group_conv.hpp"
 
 using namespace dnnl;
 using namespace InferenceEngine;

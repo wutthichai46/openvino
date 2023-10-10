@@ -31,6 +31,7 @@ class MemoryDesc;
 
 using MemoryDescPtr = std::shared_ptr<MemoryDesc>;
 using MemoryDescCPtr = std::shared_ptr<const MemoryDesc>;
+using MemoryDescs = std::vector<MemoryDescPtr>;
 
 enum MemoryDescType {
     Undef = 0,
